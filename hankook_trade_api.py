@@ -1,43 +1,69 @@
 
 ## related to config
-import os
 from os import path
 import sys
 
 config_path = path.abspath(path.join(".."))
 if config_path not in sys.path:
     sys.path.append(config_path)
-print(config_path)
-from api_config import HankookConfig
+
+from config import HankookConfig
 
 ## related to API
 import requests
 import json
 
-class KisDevelopers(HankookConfig):
-    def __init__(self, HankookConfig):
-        self.app_key = HankookConfig.APP_KEY
-        self.app_secret = HankookConfig.APP_SECRET
-        self.url_base = "https://openapi.koreainvestment.com:9443"
-        self.account_number = HankookConfig.ACCOUNT_NUMBER
+import pandas as pd
 
-    def issue_access_token(self):
+class TradeHankookAPI(HankookConfig):
+    def __init__(self, HankookConfig):
+        self.kr_key = HankookConfig.kr_key
+        self.kr_secret = HankookConfig.kr_secret
+        self.us_key = HankookConfig.us_key
+        self.us_secret = HankookConfig.us_secret
+        self.url_base = "https://openapi.koreainvestment.com:9443"
+        self.kr_account_number = HankookConfig.kr_account_number
+        self.us_account_number = HankookConfig.us_account_number
+        
+    def issue_access_token(self, country_code):
+        """
+        country_code = kr, us
+        """
+        app_key = None
+        app_secret = None
+        csv_file_name = f"{country_code}_token.csv"
+        
+        if country_code == "kr":
+            app_key = self.kr_key
+            app_secret = self.kr_secret
+            
+        elif country_code == "us":
+            app_key = self.us_key
+            app_secret = self.us_secret
+        
+        url_base = "https://openapi.koreainvestment.com:9443"
         url = "oauth2/tokenP"  ## KIS DEVELOPERS > API 문서 > 각 항목 > 기본정보 > URL 을 의미함
-        final_url = f"{self.url_base}/{url}"
+        
+        final_url = f"{url_base}/{url}"
         
         headers = {"content-type" : "application/json"}
         body = {
             "grant_type" : "client_credentials",
-            "appkey" : self.app_key,
-            "appsecret" : self.app_secret
+            "appkey" : app_key,
+            "appsecret" : app_secret
             }
         
         r = requests.post(final_url, headers = headers, data = json.dumps(body))
         r_code = r.status_code
         
         access_token = None
+        
         if r_code == 200:
             access_token = r.json()["access_token"]
+            return_dict = {f"{country_code}_token" : access_token}
+            df = pd.DataFrame([return_dict])
+            df.to_csv(csv_file_name, index=False, encoding="utf-8-sig")
+            
             print("Success Issue Access Token.")
         else:
             print("Fail Issue Access Token.")
@@ -45,10 +71,8 @@ class KisDevelopers(HankookConfig):
             print("response headers :", r.headers)
             print("resopnse text :", r.text)
             pass
-            
-        return access_token
 
-    def issue_hashkey(self, account_number=None, account_type="01"):
+    def issue_hashkey(self, country_code, account_type="01"):
         """
         INPUT : 
             account_number : string 계좌번호
@@ -56,9 +80,13 @@ class KisDevelopers(HankookConfig):
         OUTPUT :
             hashkey : 거래시 사용되는 HASHKEY
         """
-        if account_number == None:
-            account_number = self.account_number
+        account_number = None
+        if country_code == "kr":
+            account_number = self.kr_account_number
 
+        elif country_code == "us":
+            account_number = self.us_account_number
+            
         url = "/uapi/hashkey"
         final_url = f"{self.url_base}/{url}"
         headers = {
@@ -89,8 +117,7 @@ class KisDevelopers(HankookConfig):
 
         return hashkey
 
-    def kr_order_cash_stock(self, access_token, transaction, stock_code, quantity, order_type, price, account_number=None, account_type="01"):
-        
+    def kr_order_cash_stock(self, transaction, stock_code, order_type, quantity, price, account_type="01"):
         """
         transaction : str "Buy", "Sell" 입력
         stock_code : str 종목코드 6자리
@@ -101,7 +128,11 @@ class KisDevelopers(HankookConfig):
         account_type : str 계좌번호 뒤2자리, 입력 안하면 "01" 기본 입력 
         tr_cont : str 연속 거래 조회 여부, "" 공백 초기 조회, N 다음 데이터 조회
         """
-        
+        app_key = self.kr_key
+        app_secret = self.kr_secret
+
+        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+
         url = "/uapi/domestic-stock/v1/trading/order-cash"
         final_url = f"{self.url_base}/{url}"
         
@@ -111,14 +142,13 @@ class KisDevelopers(HankookConfig):
         elif transaction == "Sell":
             tr_id = "TTTC0801U"  ## 한국 매도 주문
         
-        if account_number == None:
-            account_number = self.account_number
+        account_number = self.kr_account_number
 
         headers = {
                 "Content-Type" : "application/json",
                 "authorization" : f"Bearer {access_token}",
-                "appkey" : self.app_key,
-                "appsecret" : self.app_secret,
+                "appkey" : app_key,
+                "appsecret" : app_secret,
                 "tr_id" : tr_id,
                 "custtype" : "P",  ## 개인
                 # "hashkey" : HASH
@@ -132,14 +162,13 @@ class KisDevelopers(HankookConfig):
             "ORD_QTY": quantity,
             "ORD_UNPR": price
         }
-
         res = requests.post(final_url, headers = headers, data = json.dumps(body))
         return res.json()
 
 
-    def us_order_cash_stock(self, access_token, transaction, price, order_type, stock_code, order_market, quantity, account_number=None, account_type="01", tr_cont=""):
+    def us_order_cash_stock(self, transaction, price, order_type, stock_code, order_market, quantity, account_type="01"):
         """
-        transaction : str "buy", "sell"
+        transaction : str "Buy", "Sell"
         OVRS_EXCG_CD : 
         NASD : 나스닥
         NYSE : 뉴욕
@@ -177,14 +206,17 @@ class KisDevelopers(HankookConfig):
         elif transaction == "Sell":
             tr_id = "JTTT1006U"
 
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.us_key
+        app_secret = self.us_secret
+
+        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        account_number = self.us_account_number
 
         headers = {
                 "Content-Type" : "application/json",
                 "authorization" : f"Bearer {access_token}",
-                "appkey" : self.app_key,
-                "appsecret" : self.app_secret,
+                "appkey" : app_key,
+                "appsecret" : app_secret,
                 "tr_id" : tr_id,
                 "custtype" : "P"
                 }
@@ -202,25 +234,26 @@ class KisDevelopers(HankookConfig):
             "ORD_DVSN": order_type
             }
         
-        print(datas)
-
         res = requests.post(final_url, headers = headers, data = json.dumps(datas))
         return res.json()
     
-    def us_cancel_cash_stock(self,  access_token, order_market, stock_code, orgn_odno, rvse_cncl_dvsn_cd, qty, price, account_type = "01", account_number=None):
+    def us_cancel_cash_stock(self, order_market, stock_code, orgn_odno, rvse_cncl_dvsn_cd, qty, price, account_type = "01"):
         url = "/uapi/overseas-stock/v1/trading/order-rvsecncl"
         final_url = f"{self.url_base}/{url}"
 
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.us_key
+        app_secret = self.us_secret
+
+        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        account_number = self.us_account_number
 
         tr_id = "TTTT1004U"
 
         headers = {
                 "Content-Type" : "application/json",
                 "authorization" : f"Bearer {access_token}",
-                "appkey" : self.app_key,
-                "appsecret" : self.app_secret,
+                "appkey" : app_key,
+                "appsecret" : app_secret,
                 "tr_id" : tr_id,
                 "custtype" : "P"
                 }
@@ -242,18 +275,21 @@ class KisDevelopers(HankookConfig):
         res = requests.post(final_url, headers = headers, data = json.dumps(datas))
         return res.json()
 
-    def kr_inquire_psbl_order(self, access_token, stock_code, order_price, order_type, account_type = "01", account_number=None):
+    def kr_inquire_psbl_order(self, stock_code, order_price, order_type, account_type = "01"):
         url = "/uapi/domestic-stock/v1/trading/inquire-psbl-order"
         final_url = f"{self.url_base}/{url}"
 
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.kr_key
+        app_secret = self.kr_secret
+
+        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        account_number = self.kr_account_number
 
         tr_id = "TTTC8908R"  ## 실전투자, 모의투자 : VTTC8908R 
         headers = {
             "authorization" : f"Bearer {access_token}",
-            "appkey" : self.app_key,
-            "appsecret" : self.app_secret,
+            "appkey" : app_key,
+            "appsecret" : app_secret,
             "tr_id" : tr_id
             }
         datas = {
@@ -268,7 +304,7 @@ class KisDevelopers(HankookConfig):
         res = requests.get(final_url, headers= headers, params = datas)
         return res.json()
         
-    def kr_inquire_balance(self, access_token, account_type = "01", account_number=None, AFHR_FLPR_YN="N", OFL_YN="", INQR_DVSN="02", UNPR_DVSN="01", FUND_STTL_ICLD_YN="N", FNCG_AMT_AUTO_RDPT_YN ="N", PRCS_DVSN="00", CTX_AREA_FK100="", CTX_AREA_NK100=""):
+    def kr_inquire_balance(self, account_type = "01", AFHR_FLPR_YN="N", OFL_YN="", INQR_DVSN="02", UNPR_DVSN="01", FUND_STTL_ICLD_YN="N", FNCG_AMT_AUTO_RDPT_YN ="N", PRCS_DVSN="00", CTX_AREA_FK100="", CTX_AREA_NK100=""):
         ## AFHR_FLPR_YN : 시간외 단일가 여부 N : 기본값, Y : 시간외단일가
         ## OFL_YN : 오프라인여부 공란: 기본값
         ## INQR_DVSN : 조회구분  01: 대출일별, 02: 종목별
@@ -282,15 +318,18 @@ class KisDevelopers(HankookConfig):
         url = "/uapi/domestic-stock/v1/trading/inquire-balance"
         final_url = f"{self.url_base}/{url}"
 
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.kr_key
+        app_secret = self.kr_secret
+
+        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        account_number = self.kr_account_number
 
         tr_id = "TTTC8434R"
 
         headers = {
             "authorization" : f"Bearer {access_token}",
-            "appkey" : self.app_key,
-            "appsecret" : self.app_secret,
+            "appkey" : app_key,
+            "appsecret" : app_secret,
             "tr_id" : tr_id
             }
 
@@ -310,23 +349,25 @@ class KisDevelopers(HankookConfig):
         res = requests.get(final_url, headers=headers, params = datas)
         return res.json()
 
-    def us_inquire_psamount(self, access_token, stock_code, order_market, price, account_type = "01", account_number = None):
+    def us_inquire_psamount(self, stock_code, order_market, price, account_type = "01"):
     
         url = "/uapi/overseas-stock/v1/trading/inquire-psamount"
         final_url = f"{self.url_base}/{url}"
 
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.us_key
+        app_secret = self.us_secret
+
+        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        account_number = self.us_account_number
 
         tr_id = "JTTT3007R"
 
         headers = {
             "authorization" : f"Bearer {access_token}",
-            "appkey" : self.app_key,
-            "appsecret" : self.app_secret,
+            "appkey" : app_key,
+            "appsecret" : app_secret,
             "tr_id" : tr_id
         }
-
 
         datas = {
             "ACNT_PRDT_CD": account_type,
@@ -340,19 +381,22 @@ class KisDevelopers(HankookConfig):
         return res.json()
 
 
-    def us_inquire_balance(self, access_token, order_market, currency_code, account_type = "01", account_number=None, CTX_AREA_FK100="", CTX_AREA_NK100=""):
+    def us_inquire_balance(self, order_market, currency_code, account_type = "01", CTX_AREA_FK200="", CTX_AREA_NK200=""):
         url = "/uapi/overseas-stock/v1/trading/inquire-balance"
         final_url = f"{self.url_base}/{url}"
         
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.us_key
+        app_secret = self.us_secret
+
+        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        account_number = self.us_account_number
 
         tr_id = "JTTT3012R"
 
         headers = {
             "authorization" : f"Bearer {access_token}",
-            "appkey" : self.app_key,
-            "appsecret" : self.app_secret,
+            "appkey" : app_key,
+            "appsecret" : app_secret,
             "tr_id" : tr_id
         }
 
@@ -361,24 +405,27 @@ class KisDevelopers(HankookConfig):
             "ACNT_PRDT_CD": account_type,
             "OVRS_EXCG_CD": order_market,
             "TR_CRCY_CD": currency_code,
-            "CTX_AREA_FK100": CTX_AREA_FK100,
-            "CTX_AREA_NK100": CTX_AREA_NK100
+            "CTX_AREA_FK200": CTX_AREA_FK200,
+            "CTX_AREA_NK200": CTX_AREA_NK200
         }
         res = requests.get(final_url, headers=headers, params = datas)
         return res.json()
 
-    def kr_inquire_daily_ccld(self, access_token, INQR_STRT_DT, INQR_END_DT, account_number=None, account_type="01", SLL_BUY_DVSN_CD="00", INQR_DVSN="00", PDNO="", CCLD_DVSN="01", CTX_AREA_FK100="", CTX_AREA_NK100=""):
+    def kr_inquire_daily_ccld(self, INQR_STRT_DT, INQR_END_DT, account_type="01", SLL_BUY_DVSN_CD="00", INQR_DVSN="00", PDNO="", CCLD_DVSN="01", CTX_AREA_FK100="", CTX_AREA_NK100=""):
         url = "/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
         final_url = f"{self.url_base}/{url}"
 
-        if account_number == None:
-            account_number = self.account_number
+        app_key = self.kr_key
+        app_secret = self.kr_secret
+
+        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        account_number = self.kr_account_number
         tr_id = "TTTC8001R"  ## 주식 일별 주문 체결 조회 3개월 이내, 3개월 이상은 CTSC9115R
 
         headers = {
             "authorization" : f"Bearer {access_token}",
-            "appkey" : self.app_key,
-            "appsecret" : self.app_secret,
+            "appkey" : app_key,
+            "appsecret" : app_secret,
             "tr_id" : tr_id
         }
 

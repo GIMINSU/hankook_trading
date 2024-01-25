@@ -3,7 +3,7 @@ import os
 # Import WebClient from Python SDK (github.com/slackapi/python-slack-sdk)
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-from api_config import SlackConfig
+from config import SlackConfig
 
 
 # ID of channel you want to post message to
