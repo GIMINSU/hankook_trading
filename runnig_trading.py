@@ -23,14 +23,11 @@ class BaseRunner:
     def runner(self):
         str_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         print(f"Runner START! %s"%str_now)
-        schedule.every().days.at("00:01").do(issue_token, country_code="us")
-        schedule.every().days.at("00:01").do(issue_token, country_code="kr")
         
         schedule.every().days.at("09:00").do(trade_cci, price_target_market="ETF_KR", target_stock_code="261270", cci_calculate_days=20, rate_of_one_order=0.1, order_type="01")
-        schedule.every().days.at("09:00").do(trade_cci, price_target_market="ETF_KR", target_stock_code="261260", cci_calculate_days=20, rate_of_one_order=0.1, order_type="01")
-        
         schedule.every().days.at("15:20").do(trade_cci, price_target_market="ETF_KR", target_stock_code="261270", cci_calculate_days=20, rate_of_one_order=0.1, order_type="01")
-        schedule.every().days.at("15:20").do(trade_cci, price_target_market="ETF_KR", target_stock_code="261260", cci_calculate_days=20, rate_of_one_order=0.1, order_type="01")
+        schedule.every().days.at("09:00").do(trade_cci, price_target_market="KOSPI", target_stock_code="005935", cci_calculate_days=20, rate_of_one_order=0.1, order_type="01")
+        schedule.every().days.at("15:20").do(trade_cci, price_target_market="KOSPI", target_stock_code="005935", cci_calculate_days=20, rate_of_one_order=0.1, order_type="01")
         
         schedule.every().days.at("22:35").do(trade_cci, price_target_market="ETF_US", target_stock_code="TQQQ", cci_calculate_days=20, rate_of_one_order=0.1, order_type="00")
         schedule.every().days.at("22:35").do(trade_cci, price_target_market="ETF_US", target_stock_code="SQQQ", cci_calculate_days=20, rate_of_one_order=0.1, order_type="00")

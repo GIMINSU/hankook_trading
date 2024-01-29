@@ -14,33 +14,37 @@ import requests
 import json
 
 import pandas as pd
+from datetime import datetime
 
-class TradeHankookAPI(HankookConfig):
-    def __init__(self, HankookConfig):
-        self.kr_key = HankookConfig.kr_key
-        self.kr_secret = HankookConfig.kr_secret
-        self.us_key = HankookConfig.us_key
-        self.us_secret = HankookConfig.us_secret
-        self.url_base = "https://openapi.koreainvestment.com:9443"
-        self.kr_account_number = HankookConfig.kr_account_number
-        self.us_account_number = HankookConfig.us_account_number
+def issue_access_token(HankookConfig, country_code):
+    """
+    country_code = kr, us
+    """
+    access_token = None
+    app_key = None
+    app_secret = None
+    csv_file_name = f"{country_code}_token.csv"
+    today_date = datetime.now().date().strftime("%Y-%m-%d")
+    
+    if country_code == "kr":
+        app_key = HankookConfig.kr_key
+        app_secret = HankookConfig.kr_secret
         
-    def issue_access_token(self, country_code):
-        """
-        country_code = kr, us
-        """
-        app_key = None
-        app_secret = None
-        csv_file_name = f"{country_code}_token.csv"
+    elif country_code == "us":
+        app_key = HankookConfig.us_key
+        app_secret = HankookConfig.us_secret
+    try:
+        df = pd.read_csv(csv_file_name)
+    except:
+        df = pd.DataFrame(columns=["token_issue_date", f"{country_code}_token"], data=[["",""]])
         
-        if country_code == "kr":
-            app_key = self.kr_key
-            app_secret = self.kr_secret
-            
-        elif country_code == "us":
-            app_key = self.us_key
-            app_secret = self.us_secret
-        
+    df_issue_date = df["token_issue_date"].iloc[0]
+    
+    if df_issue_date == today_date:
+        access_token = df[df["token_issue_date"]==today_date][f"{country_code}_token"].iloc[0]
+        return access_token
+    
+    else:
         url_base = "https://openapi.koreainvestment.com:9443"
         url = "oauth2/tokenP"  ## KIS DEVELOPERS > API 문서 > 각 항목 > 기본정보 > URL 을 의미함
         
@@ -56,11 +60,9 @@ class TradeHankookAPI(HankookConfig):
         r = requests.post(final_url, headers = headers, data = json.dumps(body))
         r_code = r.status_code
         
-        access_token = None
-        
         if r_code == 200:
             access_token = r.json()["access_token"]
-            return_dict = {f"{country_code}_token" : access_token}
+            return_dict = {"token_issue_date" : today_date, f"{country_code}_token" : access_token}
             df = pd.DataFrame([return_dict])
             df.to_csv(csv_file_name, index=False, encoding="utf-8-sig")
             
@@ -71,7 +73,18 @@ class TradeHankookAPI(HankookConfig):
             print("response headers :", r.headers)
             print("resopnse text :", r.text)
             pass
-
+    return access_token
+    
+class TradeHankookAPI(HankookConfig):
+    def __init__(self, HankookConfig):
+        self.kr_key = HankookConfig.kr_key
+        self.kr_secret = HankookConfig.kr_secret
+        self.us_key = HankookConfig.us_key
+        self.us_secret = HankookConfig.us_secret
+        self.url_base = "https://openapi.koreainvestment.com:9443"
+        self.kr_account_number = HankookConfig.kr_account_number
+        self.us_account_number = HankookConfig.us_account_number
+        
     def issue_hashkey(self, country_code, account_type="01"):
         """
         INPUT : 
@@ -131,7 +144,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.kr_key
         app_secret = self.kr_secret
 
-        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        access_token = issue_access_token(HankookConfig, "kr")
 
         url = "/uapi/domestic-stock/v1/trading/order-cash"
         final_url = f"{self.url_base}/{url}"
@@ -209,7 +222,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.us_key
         app_secret = self.us_secret
 
-        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        access_token = issue_access_token(HankookConfig, "us")
         account_number = self.us_account_number
 
         headers = {
@@ -244,7 +257,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.us_key
         app_secret = self.us_secret
 
-        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        access_token = issue_access_token(HankookConfig, "us")
         account_number = self.us_account_number
 
         tr_id = "TTTT1004U"
@@ -282,7 +295,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.kr_key
         app_secret = self.kr_secret
 
-        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        access_token = issue_access_token(HankookConfig, "kr")
         account_number = self.kr_account_number
 
         tr_id = "TTTC8908R"  ## 실전투자, 모의투자 : VTTC8908R 
@@ -321,7 +334,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.kr_key
         app_secret = self.kr_secret
 
-        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        access_token = issue_access_token(HankookConfig, "kr")
         account_number = self.kr_account_number
 
         tr_id = "TTTC8434R"
@@ -357,7 +370,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.us_key
         app_secret = self.us_secret
 
-        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        access_token = issue_access_token(HankookConfig, "us")
         account_number = self.us_account_number
 
         tr_id = "JTTT3007R"
@@ -388,7 +401,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.us_key
         app_secret = self.us_secret
 
-        access_token = pd.read_csv("us_token.csv")["us_token"][0]
+        access_token = issue_access_token(HankookConfig, "us")
         account_number = self.us_account_number
 
         tr_id = "JTTT3012R"
@@ -418,7 +431,7 @@ class TradeHankookAPI(HankookConfig):
         app_key = self.kr_key
         app_secret = self.kr_secret
 
-        access_token = pd.read_csv("kr_token.csv")["kr_token"][0]
+        access_token = issue_access_token(HankookConfig, "kr")
         account_number = self.kr_account_number
         tr_id = "TTTC8001R"  ## 주식 일별 주문 체결 조회 3개월 이내, 3개월 이상은 CTSC9115R
 
