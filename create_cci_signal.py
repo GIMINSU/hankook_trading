@@ -14,6 +14,8 @@ import exchange_calendars as ecals
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from tabulate import tabulate
+
 import csv
 import traceback
 
@@ -153,6 +155,7 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
                     if order_type == "01":
                         order_price = "0"
 
+                ## 미국 시장일 경우
                 elif price_target_market in us_price_market_list:
                         
                     if price_target_market == "NASDAQ":
@@ -194,8 +197,8 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
                                 order_market = "NASD"
                             order_price = str(order_price)
                             order_result = TradeHankookAPI(HankookConfig).us_order_cash_stock(transaction=current_signal_trade, stock_code=target_stock_code, order_type=order_type, quantity=buy_qty, price=order_price, order_market=order_market)
-                        message = f"Stock :{target_stock_name}, Trade Signal : {current_signal_trade}, Trade Price : {order_price} \n{order_result}"
-                        SendMessageSlack(SlackConfig).send_simple_message(message)
+                        # message = f"Stock :{target_stock_name}, Trade Signal : {current_signal_trade}, Trade Price : {order_price} \n{order_result}"
+                        # SendMessageSlack(SlackConfig).send_simple_message(message)
 
                 else:
                     if price_target_market in kr_price_market_list:
@@ -206,8 +209,8 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
                             order_market = "NASD"
                         order_price = str(order_price)
                         order_result = TradeHankookAPI(HankookConfig).us_order_cash_stock(transaction=current_signal_trade, stock_code=target_stock_code, order_type=order_type, quantity=buy_qty, price=order_price, order_market=order_market)
-                    message = f"Stock :{target_stock_name}, Trade Signal : {current_signal_trade}, Trade Price : {order_price} \n{order_result}"
-                    SendMessageSlack(SlackConfig).send_simple_message(message)
+                    # message = f"Stock :{target_stock_name}, Trade Signal : {current_signal_trade}, Trade Price : {order_price} \n{order_result}"
+                    # SendMessageSlack(SlackConfig).send_simple_message(message)
 
 
             elif current_signal_trade == "Sell":
@@ -266,10 +269,40 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
 
             elif current_signal_trade == None:
                 message = f"Stock :{target_stock_name}, Trade Signal : {current_signal_trade}"
-                SendMessageSlack(SlackConfig).send_simple_message(message)
+                print(message, datetime.now().strftime("%Y-%m-%d, %H:%M:%S"))
+                # SendMessageSlack(SlackConfig).send_simple_message(message)
+                pass
+                
+                
 
         except:
             print(traceback.format_exc())
 
     else:
         print(f"{price_target_market} is not open today.")
+        
+        
+def search_trading_history(country_code, start_date_str=None, end_date_str=None):
+    if country_code == "kr":
+        if start_date_str == None:
+            start_date_str = datetime.today().date().strftime("%Y%m%d")
+        if end_date_str == None:
+            end_date_str = datetime.today().date().strftime("%Y%m%d")
+        r_json = TradeHankookAPI(HankookConfig).kr_inquire_daily_ccld(start_date_str, end_date_str)
+        
+    elif country_code == "us":
+        if start_date_str == None:
+            start_date_str = (datetime.today() - timedelta(days=1)).date().strftime("%Y%m%d")
+        if end_date_str == None:
+            end_date_str = (datetime.today() - timedelta(days=1)).date().strftime("%Y%m%d")
+        r_json = TradeHankookAPI(HankookConfig).us_inquire_ccnl(start_date_str, end_date_str)
+        
+    if len(r_json["output1"]) > 0:
+        df = pd.DataFrame(r_json["output"])
+        r_df = df[["ord_dt", "sll_buy_dvsn_cd_name", "pdno", "prdt_name", "ft_ccld_qty", "ft_ccld_unpr3", "ft_ccld_amt3", "prcs_stat_name"]]
+        p_r_df = tabulate(r_df, tablefmt="pretty")
+        message = f"**오늘 체결 내역** \n {p_r_df}"
+        SendMessageSlack(SlackConfig).send_simple_message(message)
+    else:
+        message = f"{start_date_str}, There are no {country_code} trades histroy."
+        SendMessageSlack(SlackConfig).send_simple_message(message)

@@ -461,3 +461,41 @@ class TradeHankookAPI(HankookConfig):
 
         res = requests.get(final_url, headers=headers, params = datas)
         return res.json()
+    
+    def us_inquire_ccnl(self, ORD_STRT_DT, ORD_END_DT, account_type="01", PDNO="%", SLL_BUY_DVSN="00", CCLD_NCCS_DVSN="01", OVRS_EXCG_CD="%", SORT_SQN="AS", CTX_AREA_FK200="", CTX_AREA_NK200=""):
+        url = "/uapi/overseas-stock/v1/trading/inquire-ccnl"
+        final_url = f"{self.url_base}/{url}"
+        
+        app_key = self.us_key
+        app_secret = self.us_secret
+        
+        access_token = issue_access_token(HankookConfig, "us")
+        account_number = self.us_account_number
+        tr_id = "TTTS3035R"
+        
+        headers = {
+            "authorization" : f"Bearer {access_token}",
+            "appkey" : app_key,
+            "appsecret" : app_secret,
+            "tr_id" : tr_id
+        }
+        
+        datas = {
+            "CANO": account_number,  ## 계좌번호 체계(8-2)의 앞 8자리
+            "ACNT_PRDT_CD": account_type,  ## 계좌번호 체계(8-2)의 뒤 2자리
+            "PDNO": PDNO,  ## 전종목일 경우 "%" 입력
+            "ORD_STRT_DT": ORD_STRT_DT,  ## YYYYMMDD
+            "ORD_END_DT": ORD_END_DT,  ## YYYYMMDD
+            "SLL_BUY_DVSN": SLL_BUY_DVSN,  ## 00 : 전체 01 : 매도 02 : 매수
+            "CCLD_NCCS_DVSN": CCLD_NCCS_DVSN,  ## 00 : 전체 01 : 체결 02 : 미체결
+            "OVRS_EXCG_CD" : OVRS_EXCG_CD,  ## 전종목일 경우 "%" 입력
+            "SORT_SQN": SORT_SQN,  ## AS : 역순 DS : 정순
+            "ORD_DT":"",
+            "ORD_GNO_BRNO":"",
+            "ODNO" : "",
+            "CTX_AREA_FK200": CTX_AREA_FK200,  ## 
+            "CTX_AREA_NK200": CTX_AREA_NK200  ## 
+        }
+        
+        res = requests.get(final_url, headers=headers, params = datas)
+        return res.json()
