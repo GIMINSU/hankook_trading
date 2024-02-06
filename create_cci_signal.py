@@ -24,7 +24,19 @@ from config import HankookConfig, SlackConfig, GoogleSpreadseetsConfig
 from hankook_trade_api import TradeHankookAPI
 from slack_message import SendMessageSlack
 
-
+def check_open_market(country_code):
+    open_dummy = 0
+    if country_code == "us":
+        t_calendar = ecals.get_calendar("XNYS")
+        us_now = datetime.now() - timedelta(hours=13)
+        open_dummy = t_calendar.is_session(us_now.strftime("%Y-%m-%d"))
+    
+    elif country_code == "kr":
+        t_calendar = ecals.get_calendar("XKRX")
+        open_dummy = t_calendar.is_session(datetime.now().strftime("%Y-%m-%d"))
+            
+    return open_dummy
+    
 def trade_cci(price_target_market, order_type, target_stock_code=None, target_stock_name=None, cci_calculate_days=20, rate_of_one_order=0.1):
     """
     price_target_market (str) = 'KRX', 'KOSPI', 'ETF_KR', 'NASDAQ', 'NYSE', 'S&P500', 'AMEX', 'ETF_US
@@ -63,23 +75,21 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
     }
     
     us_etf_order_df = pd.DataFrame(us_etf_order_dict)
-    
-    open_dummy = 0
+    country_code = None
     if price_target_market in us_price_market_list:
+        country_code = "us"
         stock_code_column_var = "Symbol"
         if price_target_market == "ETF_US":
             stock_code_column_var = "symbol"
             stock_name_column_var = "name"
-        t_calendar = ecals.get_calendar("XNYS")
-        us_now = datetime.now() - timedelta(hours=13)
-        open_dummy = t_calendar.is_session(us_now.strftime("%Y-%m-%d"))
     
     elif price_target_market in kr_price_market_list:
-        t_calendar = ecals.get_calendar("XKRX")
-        open_dummy = t_calendar.is_session(datetime.now().strftime("%Y-%m-%d"))
+        country_code = "kr"
         if price_target_market == "ETF_KR":
             stock_code_column_var = "Symbol"
 
+    open_dummy = check_open_market(country_code)
+    
     if open_dummy == 1:
         try:
             if price_target_market == "ETF_KR":
@@ -154,6 +164,8 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
                     ## 국내 시장가 주문 시 주문 가격 "0"으로 변경
                     if order_type == "01":
                         order_price = "0"
+                    else:
+                        order_price = int(current_signal_price)
 
                 ## 미국 시장일 경우
                 elif price_target_market in us_price_market_list:
@@ -167,6 +179,8 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
                         elif target_stock_code in us_etf_order_df["NASDAQ"].values.tolist():
                             order_market = "NASD"
                         
+                    order_price = float(round(current_signal_price, 2))
+                    
                     ## 해외 예수금 확인
                     check_us_psbl = TradeHankookAPI(HankookConfig).us_inquire_psamount(stock_code=target_stock_code, order_market=order_market, price=current_signal_price)
                     ord_psbl_cash = round(float(check_us_psbl["output"]["frcr_ord_psbl_amt1"]), 2)
@@ -189,7 +203,7 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
                         pass
                     else:        
                         if price_target_market in kr_price_market_list:
-                            order_price = str(int(order_price))
+                            order_price = str(order_price)
                             order_result = TradeHankookAPI(HankookConfig).kr_order_cash_stock(transaction=current_signal_trade, stock_code=target_stock_code, order_type=order_type, quantity=buy_qty, price=order_price)
                         
                         elif price_target_market in us_price_market_list:
@@ -283,26 +297,38 @@ def trade_cci(price_target_market, order_type, target_stock_code=None, target_st
         
         
 def search_trading_history(country_code, start_date_str=None, end_date_str=None):
-    if country_code == "kr":
-        if start_date_str == None:
-            start_date_str = datetime.today().date().strftime("%Y%m%d")
-        if end_date_str == None:
-            end_date_str = datetime.today().date().strftime("%Y%m%d")
-        r_json = TradeHankookAPI(HankookConfig).kr_inquire_daily_ccld(start_date_str, end_date_str)
-        
-    elif country_code == "us":
-        if start_date_str == None:
-            start_date_str = (datetime.today() - timedelta(days=1)).date().strftime("%Y%m%d")
-        if end_date_str == None:
-            end_date_str = (datetime.today() - timedelta(days=1)).date().strftime("%Y%m%d")
-        r_json = TradeHankookAPI(HankookConfig).us_inquire_ccnl(start_date_str, end_date_str)
-        
-    if len(r_json["output1"]) > 0:
-        df = pd.DataFrame(r_json["output"])
-        r_df = df[["ord_dt", "sll_buy_dvsn_cd_name", "pdno", "prdt_name", "ft_ccld_qty", "ft_ccld_unpr3", "ft_ccld_amt3", "prcs_stat_name"]]
-        p_r_df = tabulate(r_df, tablefmt="pretty")
-        message = f"**오늘 체결 내역** \n {p_r_df}"
-        SendMessageSlack(SlackConfig).send_simple_message(message)
+    
+    r_df = pd.DataFrame()
+    open_dummy = check_open_market(country_code)
+    if open_dummy == 1:
+        if country_code == "kr":
+            if start_date_str == None:
+                start_date_str = datetime.today().date().strftime("%Y%m%d")
+            if end_date_str == None:
+                end_date_str = datetime.today().date().strftime("%Y%m%d")
+            r_json = TradeHankookAPI(HankookConfig).kr_inquire_daily_ccld(start_date_str, end_date_str)
+            return_data = r_json["output1"]
+            
+        elif country_code == "us":
+            if start_date_str == None:
+                start_date_str = (datetime.today() - timedelta(days=1)).date().strftime("%Y%m%d")
+            if end_date_str == None:
+                end_date_str = (datetime.today() - timedelta(days=1)).date().strftime("%Y%m%d")
+            r_json = TradeHankookAPI(HankookConfig).us_inquire_ccnl(start_date_str, end_date_str)
+            return_data = r_json["output"]
+            
+        if len(return_data) > 0:
+            df = pd.DataFrame(return_data)
+            if country_code == "kr":
+                r_df = df[["ord_dt", "sll_buy_dvsn_cd_name", "pdno", "prdt_name", "tot_ccld_qty", "tot_ccld_amt", "avg_prvs"]]
+            elif country_code == "us":
+                r_df = df[["ord_dt", "sll_buy_dvsn_cd_name", "pdno", "prdt_name", "ft_ccld_qty", "ft_ccld_unpr3", "ft_ccld_amt3", "prcs_stat_name"]]
+                
+            p_r_df = tabulate(r_df, tablefmt="pretty")
+            message = f"**오늘 체결 내역** \n {p_r_df}"
+            SendMessageSlack(SlackConfig).send_simple_message(message)
+        else:
+            message = f"{start_date_str}, There are no {country_code} trades histroy."
+            SendMessageSlack(SlackConfig).send_simple_message(message)
     else:
-        message = f"{start_date_str}, There are no {country_code} trades histroy."
-        SendMessageSlack(SlackConfig).send_simple_message(message)
+        print(f"{country_code} is not open today.")
